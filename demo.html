@@ -1,0 +1,322 @@
+<html>
+    <head>
+        <script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+        <style>
+body {
+    background-color: #F0E6F1;
+    text-align: center;
+}
+canvas {
+    display: inline-block;
+    width: 800px;
+    height: 600px;
+    margin: 30px auto;
+    background-color: #FFF;
+    border: 3px solid #FFF;
+}
+p {
+    width: 800px;
+    height: auto;
+    margin: 10px auto;
+    text-align: left;
+}
+        </style>
+    </head>
+    <body>
+        <canvas id="cv" width="800" height="600"> 请使用IE9及以上浏览器，推荐使用Chrome，Firefox，Edge最新版浏览器</canvas>
+        <p style="color: #F00;">Please click on the map to select begin or end point using mouse left button or right.</p>
+        <p class="result">&nbsp;</p>
+        <script type="text/javascript">
+// canvas object
+var cv = document.getElementById( 'cv' ).getContext( '2d' );
+
+// dots
+var dots = {
+    '-1' : { x : -100, y : -100 },
+    '-2' : { x : -100, y : -100 },
+
+    01 : { x: 50, y : 81 },
+    02 : { x: 193, y : 134 },
+    03 : { x: 387, y : 134 },
+    04 : { x: 708, y : 42 },
+    05 : { x: 268, y : 36 },
+    06 : { x: 466, y : 22 },
+    07 : { x: 387, y : 214 },
+    08 : { x: 356, y : 334 },
+    09 : { x: 416, y : 330 },
+    10 : { x: 284, y : 457 },
+    11 : { x: 422, y : 457 },
+    12 : { x: 563, y : 107 },
+    13 : { x: 640, y : 430 },
+    14 : { x: 526, y : 453 },
+    15 : { x: 653, y : 237 },
+    16 : { x: 554, y : 234 },
+};
+
+// paths
+var _paths = [
+    { begin: 01, end : 02 },
+    { begin: 02, end : 03 },
+    { begin: 03, end : 12 },
+    { begin: 12, end : 04 },
+    { begin: 05, end : 02 },
+    { begin: 05, end : 03 },
+    { begin: 06, end : 12 },
+    { begin: 06, end : 04 },
+    { begin: 03, end : 07 },
+    { begin: 07, end : 08 },
+    { begin: 07, end : 09 },
+    { begin: 08, end : 10 },
+    { begin: 09, end : 11 },
+    { begin: 10, end : 11 },
+    { begin: 11, end : 14 },
+    { begin: 13, end : 14 },
+    { begin: 12, end : 16 },
+    { begin: 16, end : 15 },
+    { begin: 16, end : 14 },
+    { begin: 16, end : 07 },
+];
+
+var none = [
+    { lt: { x : 0, y : 201 }, rb: { x: 228, y: 600 } },
+];
+
+    // 使用拷贝对象，源对象用作初始化副本
+    var paths = _paths.slice( 0 );
+
+    var sorting_paths = [];
+    function get_sorting_path() {
+        sorting_paths = [];
+        var ps = pathfinder( -1, -2 );
+
+        // 计算路径长度（权重）
+        $.each( ps, function( k, v ) {
+            var length = 0;
+            for ( var i = 1; i < v.length; i++ ) {
+                var p = get_path( v[i - 1], v[i] );
+                length += p.value.length;
+            }
+            var o = {};
+            o.length = length;
+            o.value = v;
+            sorting_paths.push( o );
+        } );
+
+        sorting_paths = sorting_paths.sort( function( a, b ) {
+            return a.length - b.length;
+        } );
+
+        console.log( sorting_paths );
+        print_paths( sorting_paths );
+    }
+    get_sorting_path();
+
+    // mouse events
+    var begin_x = -1, begin_y = -1, end_x = -1, end_y = -1;
+    var begin_dot = -1, end_dot = -1;
+    $( '#cv' ).on( 'click', function() {
+        begin_x = event.offsetX;
+        begin_y = event.offsetY;
+
+        begin_dot = push_dot( -1, { x : begin_x, y : begin_y }, begin_dot );
+        get_sorting_path();
+    } );
+    
+    $( '#cv' ).on( 'contextmenu', function() {
+        end_x = event.offsetX;
+        end_y = event.offsetY;
+        window.event.returnValue = false;
+
+        end_dot = push_dot( -2, { x : end_x, y : end_y }, end_dot );
+        get_sorting_path();
+    } );
+
+    window.requestAnimationFrame( draw );
+
+    function pathfinder( start, end ) {
+        var _paths = [ [ start ] ];
+        var finded = [];
+
+        var is_continue = true;
+        while ( is_continue ) {
+            is_continue = false;
+            // 对每条路径进行深度搜索
+            var _t_paths = [];
+            $.each( _paths, function( k, v ) {
+                // 获得路径端点的辐射路径
+                var rays = get_rays( v[ v.length - 1 ] );
+                if ( rays.length != 0 ) {
+                    // 将新路径添加到路径集
+                    $.each( rays, function( rk, rv ) {
+                        var tv = v.slice( 0 );
+                        tv.push( rv );
+
+                        if ( v.indexOf( rv ) != -1 ) {
+                                                        // 剔除环路
+                        } else if ( rv == end ) {
+                            finded.push( tv );          // 如果找到通路则记录
+                        } else {                        
+                            _t_paths.push( tv );        // 否则添加到路径集
+                            is_continue = true;
+                        }
+                    } );
+                }
+            } );
+            _paths = _t_paths;
+        }
+
+        return finded;
+    }
+
+    // 计算所有路径段长度
+    function complet_lengths() {
+        $.each( paths, function( k, v ) {
+            var w = dots[ paths[ k ].begin ].x - dots[ paths[ k ].end ].x;
+            var h = dots[ paths[ k ].begin ].y - dots[ paths[ k ].end ].y;
+            paths[ k ].length = Math.sqrt( w * w + h * h );
+        } );
+    }
+
+    function push_dot ( key, dot, id ) {
+        var distance = [];
+        delete dots[ key ];
+        // 获取最近的点
+        $.each( dots, function( k, v ) {
+            var w = dot.x - v.x;
+            var h = dot.y - v.y;
+            var length = Math.sqrt( w * w + h * h );
+            distance.push( { key: k, length : length } );
+        } );
+        distance = distance.sort( function( a, b ) {
+            return a.length - b.length;
+        } );
+        // 添加新的路径
+        dots[ key ] = dot;
+        if ( id == -1 ) {
+            id = paths.push( { begin: key, end: distance[0].key } );
+            id = id - 1;
+        } else {
+            console.log( id );
+            console.log( paths );
+            paths[ id ] = { begin: key, end: distance[0].key };
+        }
+        complet_lengths();
+
+        return id;
+    }
+
+    // 打印找到的所有路径信息
+    // paths : 路径集
+    function print_paths( paths ) {
+        var t = "Sum is " + paths.length + "<br><br>";
+        $.each( paths, function( k, v ) {
+            var _pt = "";
+            $.each( v.value, function( dk, dv ) {
+                if ( dk == 0 ) {
+                    _pt = _pt + dv;
+                } else {
+                    _pt = _pt + " &gt; " + dv;
+                }
+            } );
+            _pt = _pt + "<br>length: " + v.length + "<br><br>";
+            t = t + _pt;
+        } );
+        $( '.result' ).html( t );
+    }
+
+    // 获取某点的辐射路径
+    // dot : 已知某点
+    // return : 过某点所有线路
+    function get_rays( dot ) {
+        var s = new Array();
+        $.each( paths, function( k, v ) {
+            if ( dot == v.begin ) {
+                s.push( v.end );
+            } else if ( dot == v.end ) {
+                s.push( v.begin );
+            }
+        } );
+
+        return s;
+    }
+
+    // 获取两点之间的路径
+    // begin : 起始点
+    // end : 结束点
+    // return : 线段对象
+    function get_path( begin, end ) {
+        var t = -1;
+        $.each( paths, function( k, v ) {
+            if ( ( begin == v.begin && end == v.end ) || ( begin == v.end && end == v.begin ) ) {
+                t = { key: k, value: v };
+                return false;
+            }
+        } );
+        return t;
+    }
+
+    function draw() {
+        // Text for click
+        cv.clearRect( 0, 0, 800, 600 );
+        cv.fillText( "Begin X: " + begin_x + " Y: " + begin_y, 20, 20 );
+        cv.fillText( "End X: " + end_x + " Y: " + end_y, 20, 40 );
+
+        // Begin and End
+        if ( begin_x != -1 && begin_y != -1 ) {
+            cv.strokeStyle = "#711CFF";
+            cv.beginPath();
+            cv.arc( begin_x, begin_y, 5, 0, 2 * Math.PI, true );
+            cv.stroke();
+        }
+
+        if ( end_x != -1 && end_y != -1 ) {
+            cv.strokeStyle = "#34A50A";
+            cv.beginPath();
+            cv.arc( end_x, end_y, 5, 0, 2 * Math.PI, true );
+            cv.stroke();
+        }
+
+        cv.strokeStyle = "Black";
+
+        // Points;
+        $.each( dots, function( k, v ) {
+            cv.fillText( k, v.x + 10, v.y + 5 );
+            cv.beginPath();
+            cv.arc( v.x, v.y, 5, 0, 2 * Math.PI, true );
+            cv.fill();
+        } );
+
+        // Paths
+        $.each( paths, function( k, v ) {
+            cv.beginPath();
+            cv.moveTo( dots[ v.begin ].x, dots[ v.begin ].y );
+            cv.lineTo( dots[ v.end ].x, dots[ v.end ].y );
+            cv.stroke();
+        } );
+
+        // Finding Path
+        if ( sorting_paths.length > 0 ) {
+            cv.strokeStyle = "#FF0000";
+            cv.lineWidth = 2;
+            cv.beginPath();
+            cv.moveTo( dots[ sorting_paths[0].value[0] ].x, dots[ sorting_paths[0].value[0] ].y );
+            for ( var i = 1; i < sorting_paths[0].value.length; i++ ) {
+                cv.lineTo( dots[ sorting_paths[0].value[i] ].x, dots[ sorting_paths[0].value[i] ].y );
+            }
+            cv.stroke();
+            cv.lineWidth = 1;
+            cv.strokeStyle = "Black";
+        }
+
+        // None areas
+        $.each( none, function( k, v ) {
+            cv.fillStyle = "#F0E6F1";
+            cv.fillRect( v.lt.x, v.lt.y, v.rb.x - v.lt.x, v.rb.y - v.lt.y );
+            cv.fillStyle = "Black";
+        } );
+
+        window.requestAnimationFrame(draw);
+    }
+        </script>
+    </body>
+</html>
